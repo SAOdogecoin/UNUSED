@@ -88,22 +88,34 @@
                     <button id="processFileBtn" class="mt-4 w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-5 rounded-lg shadow-md transition-transform transform hover:scale-105 duration-300 ease-in-out">
                         Process Text File
                     </button>
+                    <button id="toggleFileResultsBtn" class="mt-2 w-full bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 px-5 rounded-lg shadow-md hidden">
+                        Show Fee Correction Results
+                    </button>
                 </div>
             </div>
 
             <!-- Right Panel -->
-            <div id="right-panel" class="lg:w-2/3 mt-8 lg:mt-0 lg:max-h-[85vh] lg:overflow-y-auto">
-                <div id="controls" class="mb-4 sticky top-0 bg-gray-100 py-2 z-10">
-                    <!-- Control buttons will be injected here -->
-                </div>
-                <div id="results" class="space-y-3">
-                    <!-- Results will be injected here by JavaScript -->
-                </div>
+            <div id="right-panel" class="lg:w-2/3 mt-8 lg:mt-0">
                  <div id="placeholder" class="text-center text-gray-500 pt-16">
                     <svg xmlns="http://www.w3.org/2000/svg" class="mx-auto h-12 w-12" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
                     <p class="mt-4">Your results will appear here.</p>
                 </div>
-                 <div id="file-results-container" class="mt-8"></div>
+
+                <!-- Shipment Link Generator Results -->
+                <div id="shipment-section" class="hidden">
+                     <div id="controls" class="mb-4 sticky top-0 bg-gray-100 py-2 z-10">
+                        <!-- Control buttons will be injected here -->
+                    </div>
+                    <div id="results" class="space-y-3">
+                        <!-- Results will be injected here by JavaScript -->
+                    </div>
+                </div>
+
+                <!-- Fee Correction Results -->
+                <div id="file-section" class="hidden">
+                    <h2 class="text-xl font-bold mb-3 text-gray-800">Fee Correction Results</h2>
+                    <div id="file-results-container"></div>
+                </div>
             </div>
         </main>
     </div>
@@ -119,12 +131,26 @@
         const fileInput = document.getElementById('fileInput');
         const processFileBtn = document.getElementById('processFileBtn');
         const fileResultsContainer = document.getElementById('file-results-container');
+        const shipmentSection = document.getElementById('shipment-section');
+        const fileSection = document.getElementById('file-section');
+        const toggleFileResultsBtn = document.getElementById('toggleFileResultsBtn');
         
         // --- Global State ---
         let allShipments = [];
 
-        // --- LINK GENERATOR LOGIC ---
+        // --- UI VISIBILITY LOGIC ---
+        function updatePlaceholderVisibility() {
+            const shipmentsVisible = allShipments.length > 0;
+            const fileResultsVisible = !fileSection.classList.contains('hidden');
+            
+            if (shipmentsVisible || fileResultsVisible) {
+                placeholderDiv.classList.add('hidden');
+            } else {
+                placeholderDiv.classList.remove('hidden');
+            }
+        }
 
+        // --- LINK GENERATOR LOGIC ---
         function generateLinks() {
             const rawText = inputText.value;
             if (!rawText.trim()) {
@@ -154,26 +180,28 @@
 
             if (newShipments.length > 0) {
                 allShipments.unshift(...newShipments.reverse());
-                renderUI();
+                renderShipmentUI();
                 inputText.value = '';
             } else {
                 displayMessage('No new shipments found with a specific cost.', 'info', resultsDiv);
             }
         }
         
-        function renderUI() {
+        function renderShipmentUI() {
             resultsDiv.innerHTML = '';
             controlsDiv.innerHTML = '';
+            
             if (allShipments.length > 0) {
-                placeholderDiv.style.display = 'none';
-                displayResults(allShipments);
-                updateControls();
+                shipmentSection.classList.remove('hidden');
+                displayShipmentResults(allShipments);
+                updateShipmentControls();
             } else {
-                placeholderDiv.style.display = 'block';
+                shipmentSection.classList.add('hidden');
             }
+            updatePlaceholderVisibility();
         }
 
-        function updateControls() {
+        function updateShipmentControls() {
             const controlsWrapper = document.createElement('div');
             controlsWrapper.className = 'flex items-center gap-3';
             const openAllBtn = document.createElement('button');
@@ -190,7 +218,7 @@
             controlsDiv.appendChild(controlsWrapper);
         }
 
-        function displayResults(shipments) {
+        function displayShipmentResults(shipments) {
             shipments.forEach(shipment => {
                 const listItem = document.createElement('div');
                 listItem.id = `shipment-${shipment.id}`;
@@ -202,12 +230,12 @@
 
         function deleteShipment(shipmentId) {
             allShipments = allShipments.filter(s => s.id !== shipmentId);
-            renderUI();
+            renderShipmentUI();
         }
 
         function clearAllShipments() {
             allShipments = [];
-            renderUI();
+            renderShipmentUI();
         }
         
         function openAllLinks() {
@@ -227,7 +255,7 @@
             container.prepend(messageDiv);
             setTimeout(() => {
                 messageDiv.style.opacity = '0';
-                setTimeout(() => messageDiv.remove(), 300);
+                setTimeout(() => messageDiv.remove(), 3000);
             }, 3000);
         }
 
@@ -248,19 +276,16 @@
         }
 
         function processTextFileData(text) {
-            // Remove BOM character that can interfere with parsing
-            if (text.charCodeAt(0) === 0xFEFF) {
+             if (text.charCodeAt(0) === 0xFEFF) {
                 text = text.substring(1);
             }
-
             const lines = text.split(/\r?\n/).filter(line => line.trim() !== '');
             if (lines.length < 2) {
                 displayMessage('File is empty or invalid.', 'error', fileResultsContainer);
                 return;
             }
             
-            // Your file is Tab-Separated. We will split by tabs.
-            const delimiter = '\t';
+            const delimiter = lines[0].includes('\t') ? '\t' : ',';
             const rows = lines.map(line => line.split(delimiter));
 
             const columnIndices = {
@@ -289,7 +314,7 @@
                     return [reimbursementId, currency, amountPerUnit, amountTotal];
                 });
 
-            const headers = ['Case ID', 'Currency', 'Amount Per Unit', 'Amount Total'];
+            const headers = ['Reimbursement ID', 'Currency', 'Amount Per Unit', 'Amount Total'];
             displayFileData(headers, filteredData);
         }
 
@@ -298,8 +323,14 @@
 
             if (data.length === 0) {
                 displayMessage('No rows found with reason "FeeCorrection".', 'info', fileResultsContainer);
+                toggleFileResultsBtn.classList.add('hidden');
                 return;
             }
+            
+            fileSection.classList.remove('hidden');
+            toggleFileResultsBtn.classList.remove('hidden');
+            toggleFileResultsBtn.textContent = 'Hide Fee Correction Results';
+            updatePlaceholderVisibility();
 
             const table = document.createElement('table');
             table.className = 'w-full text-xs text-left text-gray-500 bg-white rounded-lg shadow-md';
@@ -331,11 +362,15 @@
             });
             table.appendChild(tbody);
             
-            // Clear the placeholder from the right panel if it exists and show the table
-            document.getElementById('right-panel').innerHTML = '';
-            document.getElementById('right-panel').appendChild(table);
+            fileResultsContainer.appendChild(table);
         }
-
+        
+        function toggleFileResults() {
+            fileSection.classList.toggle('hidden');
+            const isHidden = fileSection.classList.contains('hidden');
+            toggleFileResultsBtn.textContent = isHidden ? 'Show Fee Correction Results' : 'Hide Fee Correction Results';
+            updatePlaceholderVisibility();
+        }
 
         // --- Event Listeners ---
         processBtn.addEventListener('click', generateLinks);
@@ -345,7 +380,7 @@
             }
         });
         processFileBtn.addEventListener('click', handleFileUpload);
-
+        toggleFileResultsBtn.addEventListener('click', toggleFileResults);
 
     </script>
 
