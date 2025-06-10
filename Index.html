@@ -141,11 +141,7 @@
         </main>
     </div>
     
-    <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-
+    <script>
         // --- DOM Element References ---
         const processBtn = document.getElementById('processBtn');
         const inputText = document.getElementById('inputText');
@@ -166,72 +162,46 @@
         let allShipments = [];
         let feeCorrectionData = [];
         let currentFilter = 'all';
-        let db;
-        let auth;
-        let userId;
 
-        // --- Firebase Setup and Data Persistence ---
-        async function setupFirebase() {
-            try {
-                const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
-                const app = initializeApp(firebaseConfig);
-                db = getFirestore(app);
-                auth = getAuth(app);
-
-                onAuthStateChanged(auth, async (user) => {
-                    if (user) {
-                        userId = user.uid;
-                        await loadState();
-                    } else {
-                        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                            await signInWithCustomToken(auth, __initial_auth_token);
-                        } else {
-                            await signInAnonymously(auth);
-                        }
-                    }
-                });
-            } catch (error) {
-                console.error("Firebase initialization failed:", error);
-            }
+        // --- LocalStorage Persistence ---
+        function saveState() {
+            localStorage.setItem('fbaToolShipments', JSON.stringify(allShipments));
+            localStorage.setItem('fbaToolFeeCorrections', JSON.stringify(feeCorrectionData));
+            localStorage.setItem('fbaToolFilter', currentFilter);
         }
 
-        async function saveState() {
-            if (!userId || !db) return;
-            const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-            const stateRef = doc(db, "artifacts", appId, "users", userId, "fbaToolData", "state");
-            try {
-                await setDoc(stateRef, {
-                    allShipments: JSON.stringify(allShipments),
-                    feeCorrectionData: JSON.stringify(feeCorrectionData),
-                    currentFilter: currentFilter,
-                });
-            } catch (error) {
-                console.error("Error saving state:", error);
+        function loadState() {
+            const savedShipments = localStorage.getItem('fbaToolShipments');
+            const savedCorrections = localStorage.getItem('fbaToolFeeCorrections');
+            const savedFilter = localStorage.getItem('fbaToolFilter');
+            
+            if (savedShipments) {
+                allShipments = JSON.parse(savedShipments);
             }
-        }
+            if (savedCorrections) {
+                feeCorrectionData = JSON.parse(savedCorrections);
+            }
+            if (savedFilter) {
+                currentFilter = savedFilter;
+            }
+            
+            renderShipmentUI();
+            if (feeCorrectionData.length > 0) {
+                const headers = ['Case ID', 'Currency', 'Amount Per Unit', 'Amount Total'];
+                const displayData = feeCorrectionData.map(row => [row.caseId, row.currency, row.amountPerUnit, row.amountTotal]);
+                displayFileData(headers, displayData);
+            }
 
-        async function loadState() {
-            if (!userId || !db) return;
-             const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-            const stateRef = doc(db, "artifacts", appId, "users", userId, "fbaToolData", "state");
-            try {
-                const docSnap = await getDoc(stateRef);
-                if (docSnap.exists()) {
-                    const data = docSnap.data();
-                    allShipments = JSON.parse(data.allShipments || '[]');
-                    feeCorrectionData = JSON.parse(data.feeCorrectionData || '[]');
-                    currentFilter = data.currentFilter || 'all';
-                    renderShipmentUI();
-                    if (feeCorrectionData.length > 0) {
-                        const headers = ['Case ID', 'Currency', 'Amount Per Unit', 'Amount Total'];
-                        const displayData = feeCorrectionData.map(row => [row.caseId, row.currency, row.amountPerUnit, row.amountTotal]);
-                        displayFileData(headers, displayData);
-                    }
+            // Set active filter button on load
+            document.querySelectorAll('.filter-btn').forEach(btn => {
+                if(btn.dataset.filter === currentFilter) {
+                    btn.classList.add('filter-btn-active');
+                } else {
+                    btn.classList.remove('filter-btn-active');
                 }
-            } catch (error) {
-                console.error("Error loading state:", error);
-            }
+            });
         }
+
 
         // --- UI VISIBILITY LOGIC ---
         function updatePlaceholderVisibility() {
@@ -396,12 +366,12 @@
                             ${matchInfo}
                         </div>
                         <div class="flex items-center space-x-2 flex-shrink-0 ml-4">
-                            <div class="flex flex-col space-y-2 items-end">
-                               ${actionButtonsHTML}
-                            </div>
                              <button onclick="deleteShipment('${shipment.id}')" title="Delete" class="bg-red-200 hover:bg-red-300 text-red-700 p-2 rounded-full transition duration-200 self-start">
                                 <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
                             </button>
+                            <div class="flex flex-col space-y-2 items-end">
+                               ${actionButtonsHTML}
+                            </div>
                         </div>
                     </div>`;
                 resultsDiv.appendChild(listItem);
@@ -567,7 +537,7 @@
         }
 
         // --- Event Listeners ---
-        document.addEventListener('DOMContentLoaded', setupFirebase);
+        document.addEventListener('DOMContentLoaded', loadState);
         processBtn.addEventListener('click', generateLinks);
         inputText.addEventListener('input', () => {
             if (autoGenerateToggle.checked) {
