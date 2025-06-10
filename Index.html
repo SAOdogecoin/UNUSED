@@ -66,7 +66,7 @@
                     
                     <div class="flex flex-col sm:flex-row items-center justify-between mt-4 gap-4">
                         <button id="processBtn" class="w-full sm:w-auto bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-5 rounded-lg shadow-md transition-transform transform hover:scale-105 duration-300 ease-in-out">
-                            Generate & Cross-Reference
+                            Generate Links
                         </button>
                         <div class="flex items-center">
                             <label for="autoGenerateToggle" class="mr-3 text-gray-600 text-sm cursor-pointer">Auto-Generate</label>
@@ -78,6 +78,9 @@
                             </div>
                         </div>
                     </div>
+                     <button id="crossReferenceBtn" class="mt-4 w-full bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-2 px-5 rounded-lg shadow-md hidden">
+                        Cross-Reference Results
+                    </button>
                 </div>
 
                 <!-- Text File Processor Section -->
@@ -85,10 +88,7 @@
                     <h2 class="text-lg font-bold mb-3 text-gray-700">Fee Correction Filter</h2>
                      <p class="text-gray-500 mb-4 text-sm">Upload your tab-separated text file to filter for "FeeCorrection" reasons.</p>
                     <input type="file" id="fileInput" accept=".txt,.tsv,.csv" class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"/>
-                    <button id="processFileBtn" class="mt-4 w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-5 rounded-lg shadow-md transition-transform transform hover:scale-105 duration-300 ease-in-out">
-                        Process File
-                    </button>
-                    <button id="toggleFileResultsBtn" class="mt-2 w-full bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 px-5 rounded-lg shadow-md hidden">
+                    <button id="toggleFileResultsBtn" class="mt-4 w-full bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 px-5 rounded-lg shadow-md hidden">
                         Show Fee Correction Results
                     </button>
                 </div>
@@ -130,11 +130,11 @@
         const controlsDiv = document.getElementById('controls');
         const placeholderDiv = document.getElementById('placeholder');
         const fileInput = document.getElementById('fileInput');
-        const processFileBtn = document.getElementById('processFileBtn');
         const fileResultsContainer = document.getElementById('file-results-container');
         const shipmentSection = document.getElementById('shipment-section');
         const fileSection = document.getElementById('file-section');
         const toggleFileResultsBtn = document.getElementById('toggleFileResultsBtn');
+        const crossReferenceBtn = document.getElementById('crossReferenceBtn');
         
         // --- Global State ---
         let allShipments = [];
@@ -149,6 +149,14 @@
                 placeholderDiv.classList.add('hidden');
             } else {
                 placeholderDiv.classList.remove('hidden');
+            }
+        }
+        
+        function updateCrossReferenceButtonState() {
+            if (allShipments.length > 0 && feeCorrectionData.length > 0) {
+                crossReferenceBtn.classList.remove('hidden');
+            } else {
+                crossReferenceBtn.classList.add('hidden');
             }
         }
 
@@ -174,16 +182,6 @@
                     if (!allShipments.some(s => s.id === id)) {
                          const cost = parseFloat(costMatch[1].replace(/,/g, ''));
                          const shipment = { id, cost, url: `https://sellercentral.amazon.com/fba/inbound-shipment/summary/${id}/shipmentEvents`, match: null };
-                         
-                         // Cross-reference logic
-                         const foundMatch = feeCorrectionData.find(fee => 
-                             Math.abs(parseFloat(fee.amountPerUnit)) === Math.abs(cost) || 
-                             Math.abs(parseFloat(fee.amountTotal)) === Math.abs(cost)
-                         );
-
-                         if (foundMatch) {
-                             shipment.match = foundMatch;
-                         }
                          allShipments.unshift(shipment);
                     }
                 }
@@ -195,6 +193,23 @@
             } else {
                  displayMessage('No new shipments found.', 'info', resultsDiv, true);
             }
+        }
+
+        function crossReferenceResults() {
+            if (allShipments.length === 0 || feeCorrectionData.length === 0) {
+                alert("Please generate shipment links and process a file first.");
+                return;
+            }
+             allShipments.forEach(shipment => {
+                const foundMatch = feeCorrectionData.find(fee => 
+                    Math.abs(parseFloat(fee.amountPerUnit)) === Math.abs(shipment.cost) || 
+                    Math.abs(parseFloat(fee.amountTotal)) === Math.abs(shipment.cost)
+                );
+                if (foundMatch) {
+                    shipment.match = foundMatch;
+                }
+            });
+            renderShipmentUI(); // Re-render to show matches
         }
         
         function renderShipmentUI() {
@@ -209,6 +224,7 @@
                 shipmentSection.classList.add('hidden');
             }
             updatePlaceholderVisibility();
+            updateCrossReferenceButtonState();
         }
 
         function updateShipmentControls() {
@@ -384,6 +400,7 @@
             const displayData = feeCorrectionData.map(row => [row.caseId, row.currency, row.amountPerUnit, row.amountTotal]);
             
             displayFileData(headers, displayData);
+            updateCrossReferenceButtonState();
         }
 
         function displayFileData(headers, data) {
@@ -444,8 +461,9 @@
                 generateLinks();
             }
         });
-        processFileBtn.addEventListener('click', handleFileUpload);
+        fileInput.addEventListener('change', handleFileUpload);
         toggleFileResultsBtn.addEventListener('click', toggleFileResults);
+        crossReferenceBtn.addEventListener('click', crossReferenceResults);
 
     </script>
 
