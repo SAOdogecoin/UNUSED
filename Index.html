@@ -68,7 +68,7 @@
                         <button id="processBtn" class="w-full sm:w-auto bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-5 rounded-lg shadow-md transition-transform transform hover:scale-105 duration-300 ease-in-out">
                             Generate Links
                         </button>
-                        <div class="flex items-center">
+                         <div class="flex items-center">
                             <label for="autoGenerateToggle" class="mr-3 text-gray-600 text-sm cursor-pointer">Auto-Generate</label>
                             <div class="relative inline-block w-10 select-none">
                                 <input type="checkbox" name="toggle" id="autoGenerateToggle" class="toggle-checkbox absolute block w-5 h-5 rounded-full bg-white border-gray-300 appearance-none cursor-pointer hidden" checked/>
@@ -79,8 +79,17 @@
                         </div>
                     </div>
                      <button id="crossReferenceBtn" class="mt-4 w-full bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-2 px-5 rounded-lg shadow-md hidden">
-                        Cross-Reference Results
+                        Cross-Reference Manually
                     </button>
+                     <div class="flex items-center mt-4 justify-end">
+                            <label for="autoCrossReferenceToggle" class="mr-3 text-gray-600 text-sm cursor-pointer">Auto Cross-Reference</label>
+                            <div class="relative inline-block w-10 select-none">
+                                <input type="checkbox" name="toggle" id="autoCrossReferenceToggle" class="toggle-checkbox absolute block w-5 h-5 rounded-full bg-white border-gray-300 appearance-none cursor-pointer hidden" checked/>
+                                <label for="autoCrossReferenceToggle" class="toggle-label block overflow-hidden h-5 rounded-full bg-gray-300 cursor-pointer transition-colors">
+                                     <span class="toggle-thumb block w-1/2 h-full rounded-full bg-white shadow-sm transform transition-transform duration-200 ease-in-out"></span>
+                                </label>
+                            </div>
+                        </div>
                 </div>
 
                 <!-- Text File Processor Section -->
@@ -120,8 +129,12 @@
             </div>
         </main>
     </div>
+    
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-    <script>
         // --- DOM Element References ---
         const processBtn = document.getElementById('processBtn');
         const inputText = document.getElementById('inputText');
@@ -135,15 +148,82 @@
         const fileSection = document.getElementById('file-section');
         const toggleFileResultsBtn = document.getElementById('toggleFileResultsBtn');
         const crossReferenceBtn = document.getElementById('crossReferenceBtn');
+        const autoCrossReferenceToggle = document.getElementById('autoCrossReferenceToggle');
         
         // --- Global State ---
         let allShipments = [];
         let feeCorrectionData = [];
+        let db;
+        let auth;
+        let userId;
+
+        // --- Firebase Setup and Data Persistence ---
+        async function setupFirebase() {
+            try {
+                const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
+                const app = initializeApp(firebaseConfig);
+                db = getFirestore(app);
+                auth = getAuth(app);
+
+                onAuthStateChanged(auth, async (user) => {
+                    if (user) {
+                        userId = user.uid;
+                        await loadState();
+                    } else {
+                        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                            await signInWithCustomToken(auth, __initial_auth_token);
+                        } else {
+                            await signInAnonymously(auth);
+                        }
+                    }
+                });
+            } catch (error) {
+                console.error("Firebase initialization failed:", error);
+            }
+        }
+
+        async function saveState() {
+            if (!userId || !db) return;
+            const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+            // FIX: Corrected Firestore path to have an even number of segments
+            const stateRef = doc(db, "artifacts", appId, "users", userId, "fbaToolData", "state");
+            try {
+                await setDoc(stateRef, {
+                    allShipments: JSON.stringify(allShipments),
+                    feeCorrectionData: JSON.stringify(feeCorrectionData)
+                });
+            } catch (error) {
+                console.error("Error saving state:", error);
+            }
+        }
+
+        async function loadState() {
+            if (!userId || !db) return;
+             const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+            // FIX: Corrected Firestore path to have an even number of segments
+            const stateRef = doc(db, "artifacts", appId, "users", userId, "fbaToolData", "state");
+            try {
+                const docSnap = await getDoc(stateRef);
+                if (docSnap.exists()) {
+                    const data = docSnap.data();
+                    allShipments = JSON.parse(data.allShipments || '[]');
+                    feeCorrectionData = JSON.parse(data.feeCorrectionData || '[]');
+                    renderShipmentUI();
+                    if (feeCorrectionData.length > 0) {
+                        const headers = ['Case ID', 'Currency', 'Amount Per Unit', 'Amount Total'];
+                        const displayData = feeCorrectionData.map(row => [row.caseId, row.currency, row.amountPerUnit, row.amountTotal]);
+                        displayFileData(headers, displayData);
+                    }
+                }
+            } catch (error) {
+                console.error("Error loading state:", error);
+            }
+        }
 
         // --- UI VISIBILITY LOGIC ---
         function updatePlaceholderVisibility() {
             const shipmentsVisible = allShipments.length > 0;
-            const fileResultsExist = fileResultsContainer.hasChildNodes();
+            const fileResultsExist = fileResultsContainer.hasChildNodes() && !fileSection.classList.contains('hidden');
             
             if (shipmentsVisible || fileResultsExist) {
                 placeholderDiv.classList.add('hidden');
@@ -153,7 +233,8 @@
         }
         
         function updateCrossReferenceButtonState() {
-            if (allShipments.length > 0 && feeCorrectionData.length > 0) {
+            const autoChecked = autoCrossReferenceToggle.checked;
+            if (allShipments.length > 0 && feeCorrectionData.length > 0 && !autoChecked) {
                 crossReferenceBtn.classList.remove('hidden');
             } else {
                 crossReferenceBtn.classList.add('hidden');
@@ -171,6 +252,7 @@
             }
 
             const shipmentChunks = rawText.split('Shipment name:');
+            let newShipmentsFound = false;
             
             shipmentChunks.forEach(chunk => {
                 if (!chunk.trim()) return;
@@ -183,23 +265,23 @@
                          const cost = parseFloat(costMatch[1].replace(/,/g, ''));
                          const shipment = { id, cost, url: `https://sellercentral.amazon.com/fba/inbound-shipment/summary/${id}/shipmentEvents`, match: null };
                          allShipments.unshift(shipment);
+                         newShipmentsFound = true;
                     }
                 }
             });
             
-            renderShipmentUI();
-            if (shipmentChunks.length > 1) {
+            if (newShipmentsFound) {
+                 if (autoCrossReferenceToggle.checked) {
+                     crossReferenceResults();
+                 }
+                 renderShipmentUI();
                  inputText.value = '';
-            } else {
+            } else if (shipmentChunks.length > 1) {
                  displayMessage('No new shipments found.', 'info', resultsDiv, true);
             }
         }
 
         function crossReferenceResults() {
-            if (allShipments.length === 0 || feeCorrectionData.length === 0) {
-                alert("Please generate shipment links and process a file first.");
-                return;
-            }
              allShipments.forEach(shipment => {
                 const foundMatch = feeCorrectionData.find(fee => 
                     Math.abs(parseFloat(fee.amountPerUnit)) === Math.abs(shipment.cost) || 
@@ -209,7 +291,7 @@
                     shipment.match = foundMatch;
                 }
             });
-            renderShipmentUI(); // Re-render to show matches
+            renderShipmentUI();
         }
         
         function renderShipmentUI() {
@@ -225,6 +307,7 @@
             }
             updatePlaceholderVisibility();
             updateCrossReferenceButtonState();
+            saveState();
         }
 
         function updateShipmentControls() {
@@ -239,7 +322,7 @@
             const matchedCases = allShipments.filter(s => s.match && s.match.caseId);
             if (matchedCases.length > 0) {
                  const openCasesBtn = document.createElement('button');
-                 openCasesBtn.textContent = `Open All Matched Cases (${matchedCases.length})`;
+                 openCasesBtn.textContent = `Open Matched Cases (${matchedCases.length})`;
                  openCasesBtn.className = 'flex-grow bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded-lg shadow-md transition-transform transform hover:scale-105 duration-300';
                  openCasesBtn.onclick = openAllMatchedCases;
                  controlsWrapper.appendChild(openCasesBtn);
@@ -260,22 +343,19 @@
                 listItem.id = `shipment-${shipment.id}`;
                 
                 let matchInfo = '';
+                let actionButtons = `<a href="${shipment.url}" target="_blank" rel="noopener noreferrer" class="bg-gray-200 hover:bg-gray-300 text-gray-700 font-semibold py-1 px-3 rounded-lg transition duration-200 text-sm">View Shipment</a>`;
+
                 if (shipment.match && shipment.match.caseId) {
                     listItem.className = 'bg-green-100 p-3 rounded-lg shadow-md animate-fade-in';
                     const caseUrl = `https://sellercentral.amazon.com/case-dashboard/view-case?caseID=${shipment.match.caseId}`;
                     matchInfo = `
                     <div class="mt-2 pt-2 border-t border-green-300">
-                        <div class="flex justify-between items-center">
-                            <div>
-                                <p class="text-xs text-green-700 font-bold">MATCH FOUND</p>
-                                <p class="text-xs text-gray-600">Case ID: ${shipment.match.caseId}</p>
-                                <p class="text-xs text-gray-600">Amounts: ${shipment.match.amountPerUnit} / ${shipment.match.amountTotal}</p>
-                            </div>
-                            <a href="${caseUrl}" target="_blank" rel="noopener noreferrer" class="bg-purple-200 hover:bg-purple-300 text-purple-800 font-semibold py-1 px-3 rounded-lg transition duration-200 text-sm">
-                                View Case
-                            </a>
-                        </div>
+                        <p class="text-xs text-green-700 font-bold">MATCH FOUND</p>
+                        <p class="text-xs text-gray-600">Case ID: ${shipment.match.caseId}</p>
+                        <p class="text-xs text-gray-600">Amounts: ${shipment.match.amountPerUnit} / ${shipment.match.amountTotal}</p>
                     </div>`;
+                    actionButtons += `<a href="${caseUrl}" target="_blank" rel="noopener noreferrer" class="bg-purple-200 hover:bg-purple-300 text-purple-800 font-semibold py-1 px-3 rounded-lg transition duration-200 text-sm">View Case</a>`;
+
                 } else {
                      listItem.className = 'bg-white p-3 rounded-lg shadow-md animate-fade-in';
                 }
@@ -292,9 +372,9 @@
                         <button onclick="deleteShipment('${shipment.id}')" title="Delete" class="bg-red-200 hover:bg-red-300 text-red-700 p-2 rounded-full transition duration-200">
                             <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
                         </button>
-                        <a href="${shipment.url}" target="_blank" rel="noopener noreferrer" class="bg-gray-200 hover:bg-gray-300 text-gray-700 font-semibold py-1 px-3 rounded-lg transition duration-200 text-sm">
-                            View Shipment
-                        </a>
+                        <div class="flex flex-col space-y-2">
+                           ${actionButtons}
+                        </div>
                     </div>`;
                 resultsDiv.appendChild(listItem);
             });
@@ -400,6 +480,9 @@
             const displayData = feeCorrectionData.map(row => [row.caseId, row.currency, row.amountPerUnit, row.amountTotal]);
             
             displayFileData(headers, displayData);
+            if(autoCrossReferenceToggle.checked) {
+                crossReferenceResults();
+            }
             updateCrossReferenceButtonState();
         }
 
@@ -446,6 +529,7 @@
             });
             table.appendChild(tbody);
             fileResultsContainer.appendChild(table);
+            saveState();
         }
         
         function toggleFileResults() {
@@ -455,6 +539,7 @@
         }
 
         // --- Event Listeners ---
+        document.addEventListener('DOMContentLoaded', setupFirebase);
         processBtn.addEventListener('click', generateLinks);
         inputText.addEventListener('input', () => {
             if (autoGenerateToggle.checked) {
@@ -464,8 +549,8 @@
         fileInput.addEventListener('change', handleFileUpload);
         toggleFileResultsBtn.addEventListener('click', toggleFileResults);
         crossReferenceBtn.addEventListener('click', crossReferenceResults);
+        autoCrossReferenceToggle.addEventListener('change', updateCrossReferenceButtonState);
 
     </script>
-
 </body>
 </html>
