@@ -44,6 +44,10 @@
         .animate-fade-in {
             animation: fadeIn 0.3s ease-out forwards;
         }
+        .filter-btn-active {
+            background-color: #3b82f6; /* blue-500 */
+            color: white;
+        }
     </style>
 </head>
 <body class="bg-gray-100 text-gray-800">
@@ -112,7 +116,14 @@
 
                 <!-- Shipment Link Generator Results -->
                 <div id="shipment-section" class="hidden">
-                    <h2 class="text-xl font-bold mb-3 text-gray-800">Shipment Link Results</h2>
+                    <div class="flex justify-between items-center mb-3">
+                        <h2 class="text-xl font-bold text-gray-800">Shipment Link Results</h2>
+                        <div id="shipment-filters" class="flex space-x-2">
+                             <button data-filter="all" class="filter-btn text-xs font-semibold py-1 px-3 rounded-full bg-gray-200 hover:bg-gray-300 transition filter-btn-active">All</button>
+                             <button data-filter="matched" class="filter-btn text-xs font-semibold py-1 px-3 rounded-full bg-gray-200 hover:bg-gray-300 transition">Matched</button>
+                             <button data-filter="over120" class="filter-btn text-xs font-semibold py-1 px-3 rounded-full bg-gray-200 hover:bg-gray-300 transition">$120+</button>
+                        </div>
+                    </div>
                      <div id="controls" class="mb-4 sticky top-0 bg-gray-100 py-2 z-10">
                         <!-- Control buttons will be injected here -->
                     </div>
@@ -149,10 +160,12 @@
         const toggleFileResultsBtn = document.getElementById('toggleFileResultsBtn');
         const crossReferenceBtn = document.getElementById('crossReferenceBtn');
         const autoCrossReferenceToggle = document.getElementById('autoCrossReferenceToggle');
+        const shipmentFilters = document.getElementById('shipment-filters');
         
         // --- Global State ---
         let allShipments = [];
         let feeCorrectionData = [];
+        let currentFilter = 'all';
         let db;
         let auth;
         let userId;
@@ -189,7 +202,8 @@
             try {
                 await setDoc(stateRef, {
                     allShipments: JSON.stringify(allShipments),
-                    feeCorrectionData: JSON.stringify(feeCorrectionData)
+                    feeCorrectionData: JSON.stringify(feeCorrectionData),
+                    currentFilter: currentFilter,
                 });
             } catch (error) {
                 console.error("Error saving state:", error);
@@ -206,6 +220,7 @@
                     const data = docSnap.data();
                     allShipments = JSON.parse(data.allShipments || '[]');
                     feeCorrectionData = JSON.parse(data.feeCorrectionData || '[]');
+                    currentFilter = data.currentFilter || 'all';
                     renderShipmentUI();
                     if (feeCorrectionData.length > 0) {
                         const headers = ['Case ID', 'Currency', 'Amount Per Unit', 'Amount Total'];
@@ -282,7 +297,7 @@
         function crossReferenceResults() {
              allShipments.forEach(shipment => {
                 if (shipment.cost > 120) {
-                    shipment.match = null; // Ensure no match if cost > 120
+                    shipment.match = null;
                     return; 
                 }
                 const foundMatch = feeCorrectionData.find(fee => 
@@ -302,7 +317,7 @@
             
             if (allShipments.length > 0) {
                 shipmentSection.classList.remove('hidden');
-                displayShipmentResults(allShipments);
+                displayShipmentResults();
                 updateShipmentControls();
             } else {
                 shipmentSection.classList.add('hidden');
@@ -339,15 +354,23 @@
             controlsDiv.appendChild(controlsWrapper);
         }
 
-        function displayShipmentResults(shipments) {
-            shipments.forEach(shipment => {
+        function displayShipmentResults() {
+             resultsDiv.innerHTML = '';
+             let filteredShipments = allShipments;
+             if(currentFilter === 'matched') {
+                 filteredShipments = allShipments.filter(s => s.match);
+             } else if (currentFilter === 'over120') {
+                 filteredShipments = allShipments.filter(s => s.cost > 120);
+             }
+
+            filteredShipments.forEach(shipment => {
                 const listItem = document.createElement('div');
                 listItem.id = `shipment-${shipment.id}`;
                 
                 let matchInfo = '';
                 let actionButtonsHTML = `<a href="${shipment.url}" target="_blank" rel="noopener noreferrer" class="bg-gray-200 hover:bg-gray-300 text-gray-700 font-semibold py-1 px-3 rounded-lg transition duration-200 text-sm">View Shipment</a>`;
                  if (shipment.cost > 120) {
-                     actionButtonsHTML += `<a href="https://sellercentral.amazon.com/payments/event/view?resultsPerPage=10&pageNumber=1" target="_blank" rel="noopener noreferrer" class="bg-orange-200 hover:bg-orange-300 text-orange-800 font-semibold py-1 px-3 rounded-lg transition duration-200 text-sm mt-2">View Payments</a>`;
+                     actionButtonsHTML += `<a href="https://sellercentral.amazon.com/payments/event/view?resultsPerPage=10&pageNumber=1" target="_blank" rel="noopener noreferrer" class="bg-orange-200 hover:bg-orange-300 text-orange-800 font-semibold py-1 px-3 rounded-lg transition duration-200 text-sm">View Payments</a>`;
                 }
 
                 if (shipment.match && shipment.match.caseId) {
@@ -555,6 +578,19 @@
         toggleFileResultsBtn.addEventListener('click', toggleFileResults);
         crossReferenceBtn.addEventListener('click', crossReferenceResults);
         autoCrossReferenceToggle.addEventListener('change', updateCrossReferenceButtonState);
+
+        shipmentFilters.addEventListener('click', (e) => {
+            if(e.target.classList.contains('filter-btn')) {
+                const filterValue = e.target.dataset.filter;
+                currentFilter = filterValue;
+                
+                // Update active button style
+                document.querySelectorAll('.filter-btn').forEach(btn => btn.classList.remove('filter-btn-active'));
+                e.target.classList.add('filter-btn-active');
+                
+                renderShipmentUI();
+            }
+        });
 
     </script>
 </body>
