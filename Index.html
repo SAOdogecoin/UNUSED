@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Amazon FBA Shipment Link Generator</title>
+    <title>Amazon FBA Tool</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
@@ -12,15 +12,18 @@
         }
         /* Custom scrollbar */
         textarea::-webkit-scrollbar,
-        #right-panel::-webkit-scrollbar {
+        #right-panel::-webkit-scrollbar,
+        #csv-results-container::-webkit-scrollbar {
             width: 8px;
         }
         textarea::-webkit-scrollbar-track,
-        #right-panel::-webkit-scrollbar-track {
+        #right-panel::-webkit-scrollbar-track,
+        #csv-results-container::-webkit-scrollbar-track {
             background: #e5e7eb; /* gray-200 */
         }
         textarea::-webkit-scrollbar-thumb,
-        #right-panel::-webkit-scrollbar-thumb {
+        #right-panel::-webkit-scrollbar-thumb,
+        #csv-results-container::-webkit-scrollbar-thumb {
             background-color: #9ca3af; /* gray-400 */
             border-radius: 20px;
         }
@@ -47,15 +50,17 @@
 
     <header class="bg-white shadow-md sticky top-0 z-20">
         <div class="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex justify-start items-center">
-             <h1 class="text-xl font-bold py-3">FBA Shipment Link Generator</h1>
+             <h1 class="text-xl font-bold py-3">FBA Tool</h1>
         </div>
     </header>
 
     <div class="w-full max-w-7xl mx-auto p-4 sm:p-6 lg:p-8">
         <main class="lg:flex lg:gap-8">
             <!-- Left Panel -->
-            <div id="left-panel" class="lg:w-1/3 lg:flex-shrink-0">
-                 <div class="bg-white p-5 rounded-xl shadow-lg sticky top-24">
+            <div id="left-panel" class="lg:w-1/3 lg:flex-shrink-0 space-y-8">
+                 <!-- Link Generator Section -->
+                 <div class="bg-white p-5 rounded-xl shadow-lg">
+                    <h2 class="text-lg font-bold mb-3 text-gray-700">Shipment Link Generator</h2>
                     <p class="text-gray-500 mb-4 text-sm">Paste your shipment summary text below. Results will stack on the right.</p>
                     <textarea id="inputText" class="w-full h-56 bg-gray-200 border border-gray-300 text-gray-800 rounded-lg p-4 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition duration-200 resize-none" placeholder="Paste the text content from the Amazon Seller Central shipment page here..."></textarea>
                     
@@ -74,6 +79,16 @@
                         </div>
                     </div>
                 </div>
+
+                <!-- Text File Processor Section -->
+                <div class="bg-white p-5 rounded-xl shadow-lg">
+                    <h2 class="text-lg font-bold mb-3 text-gray-700">Fee Correction Filter</h2>
+                     <p class="text-gray-500 mb-4 text-sm">Upload your tab-separated text file to filter for "FeeCorrection" reasons.</p>
+                    <input type="file" id="fileInput" accept=".txt,.tsv,.csv" class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"/>
+                    <button id="processFileBtn" class="mt-4 w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-5 rounded-lg shadow-md transition-transform transform hover:scale-105 duration-300 ease-in-out">
+                        Process Text File
+                    </button>
+                </div>
             </div>
 
             <!-- Right Panel -->
@@ -86,8 +101,9 @@
                 </div>
                  <div id="placeholder" class="text-center text-gray-500 pt-16">
                     <svg xmlns="http://www.w3.org/2000/svg" class="mx-auto h-12 w-12" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
-                    <p class="mt-4">Your generated shipments will appear here.</p>
+                    <p class="mt-4">Your results will appear here.</p>
                 </div>
+                 <div id="file-results-container" class="mt-8"></div>
             </div>
         </main>
     </div>
@@ -100,20 +116,20 @@
         const resultsDiv = document.getElementById('results');
         const controlsDiv = document.getElementById('controls');
         const placeholderDiv = document.getElementById('placeholder');
+        const fileInput = document.getElementById('fileInput');
+        const processFileBtn = document.getElementById('processFileBtn');
+        const fileResultsContainer = document.getElementById('file-results-container');
         
         // --- Global State ---
         let allShipments = [];
 
-        // --- APPLICATION LOGIC ---
+        // --- LINK GENERATOR LOGIC ---
 
-        /**
-         * Main parsing and link generation function.
-         */
         function generateLinks() {
             const rawText = inputText.value;
             if (!rawText.trim()) {
                 if (document.activeElement === processBtn) {
-                     displayMessage('Please paste some text first.', 'error');
+                     displayMessage('Please paste some text first.', 'error', resultsDiv);
                 }
                 return;
             }
@@ -123,7 +139,6 @@
             
             shipmentChunks.forEach(chunk => {
                 if (!chunk.trim()) return;
-
                 const idMatch = chunk.match(/ID:(FBA[A-Z0-9]+)/);
                 const costMatch = chunk.match(/Amazon partnered carrier cost:\s*\$([\d,]+\.\d{2})/);
 
@@ -138,21 +153,17 @@
             });
 
             if (newShipments.length > 0) {
-                allShipments.unshift(...newShipments.reverse()); // Add new items to the top
+                allShipments.unshift(...newShipments.reverse());
                 renderUI();
                 inputText.value = '';
             } else {
-                displayMessage('No new shipments found with a specific cost.', 'info');
+                displayMessage('No new shipments found with a specific cost.', 'info', resultsDiv);
             }
         }
         
-        /**
-         * Renders the entire UI based on the current state.
-         */
         function renderUI() {
             resultsDiv.innerHTML = '';
             controlsDiv.innerHTML = '';
-
             if (allShipments.length > 0) {
                 placeholderDiv.style.display = 'none';
                 displayResults(allShipments);
@@ -162,120 +173,169 @@
             }
         }
 
-        /**
-         * Updates control buttons like "Open All" and "Clear All".
-         */
         function updateControls() {
             const controlsWrapper = document.createElement('div');
             controlsWrapper.className = 'flex items-center gap-3';
-
             const openAllBtn = document.createElement('button');
             openAllBtn.textContent = `Open All (${allShipments.length})`;
             openAllBtn.className = 'flex-grow bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg shadow-md transition-transform transform hover:scale-105 duration-300';
             openAllBtn.onclick = openAllLinks;
             controlsWrapper.appendChild(openAllBtn);
-
             const clearAllBtn = document.createElement('button');
-            clearAllBtn.innerHTML = `
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                </svg>
-                <span class="ml-2">Clear All</span>`;
+            clearAllBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg><span class="ml-2">Clear All</span>`;
             clearAllBtn.title = "Clear All Shipments";
             clearAllBtn.className = 'flex-shrink-0 bg-red-600 hover:bg-red-700 text-white font-bold p-2 rounded-lg shadow-md flex items-center transition-transform transform hover:scale-105 duration-300';
             clearAllBtn.onclick = clearAllShipments;
             controlsWrapper.appendChild(clearAllBtn);
-
             controlsDiv.appendChild(controlsWrapper);
         }
 
-        /**
-         * Renders shipment items in the list.
-         * @param {Array<Object>} shipments - An array of shipment objects.
-         */
         function displayResults(shipments) {
             shipments.forEach(shipment => {
                 const listItem = document.createElement('div');
                 listItem.id = `shipment-${shipment.id}`;
                 listItem.className = 'bg-white p-3 rounded-lg shadow-md flex items-center justify-between animate-fade-in';
-                
-                listItem.innerHTML = `
-                    <div class="flex-grow">
-                        <p class="font-mono text-base text-gray-800">${shipment.id}</p>
-                        <p class="text-xs text-green-500 font-semibold">Partnered Carrier Cost: $${shipment.cost}</p>
-                    </div>
-                    <div class="flex items-center space-x-2 flex-shrink-0 ml-4">
-                         <button onclick="deleteShipment('${shipment.id}')" title="Delete" class="bg-red-200 hover:bg-red-300 text-red-700 p-2 rounded-full transition duration-200">
-                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-                            </svg>
-                         </button>
-                        <a href="${shipment.url}" target="_blank" rel="noopener noreferrer" class="bg-gray-200 hover:bg-gray-300 text-gray-700 font-semibold py-1 px-3 rounded-lg transition duration-200 text-sm">
-                            View
-                        </a>
-                    </div>
-                `;
+                listItem.innerHTML = `<div class="flex-grow"><p class="font-mono text-base text-gray-800">${shipment.id}</p><p class="text-xs text-green-500 font-semibold">Partnered Carrier Cost: $${shipment.cost}</p></div><div class="flex items-center space-x-2 flex-shrink-0 ml-4"><button onclick="deleteShipment('${shipment.id}')" title="Delete" class="bg-red-200 hover:bg-red-300 text-red-700 p-2 rounded-full transition duration-200"><svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg></button><a href="${shipment.url}" target="_blank" rel="noopener noreferrer" class="bg-gray-200 hover:bg-gray-300 text-gray-700 font-semibold py-1 px-3 rounded-lg transition duration-200 text-sm">View</a></div>`;
                 resultsDiv.appendChild(listItem);
             });
         }
 
-        /**
-         * Deletes a single shipment.
-         * @param {string} shipmentId - The ID of the shipment to delete.
-         */
         function deleteShipment(shipmentId) {
             allShipments = allShipments.filter(s => s.id !== shipmentId);
             renderUI();
         }
 
-        /**
-         * Clears all shipments.
-         */
         function clearAllShipments() {
             allShipments = [];
             renderUI();
         }
         
-        /**
-         * Opens all shipment links in new tabs.
-         */
         function openAllLinks() {
             if (allShipments.length > 0) {
-                const note = document.createElement('p');
-                note.textContent = 'Note: Your browser might block multiple pop-ups. Please allow them if prompted.';
-                note.className = 'text-center text-sm text-yellow-500 mt-2';
-                const existingNote = controlsDiv.querySelector('.text-yellow-500');
-                if(!existingNote) {
-                    controlsDiv.appendChild(note);
-                    setTimeout(() => note.remove(), 4000);
-                }
-
-                allShipments.forEach(shipment => {
-                    window.open(shipment.url, '_blank');
-                });
+                allShipments.forEach(shipment => window.open(shipment.url, '_blank'));
             }
         }
         
-        /**
-         * Displays a temporary status message.
-         */
-        function displayMessage(message, type = 'info') {
-            const oldMsg = resultsDiv.querySelector('.status-message');
+        function displayMessage(message, type = 'info', container) {
+            const oldMsg = container.querySelector('.status-message');
             if(oldMsg) oldMsg.remove();
-
             const bgColor = type === 'error' ? 'bg-red-100' : 'bg-blue-100';
             const textColor = type === 'error' ? 'text-red-700' : 'text-blue-700';
             const messageDiv = document.createElement('div');
             messageDiv.className = `status-message ${bgColor} ${textColor} p-3 rounded-lg text-center mb-4 transition-all`;
             messageDiv.textContent = message;
-            
-            resultsDiv.prepend(messageDiv);
-            
+            container.prepend(messageDiv);
             setTimeout(() => {
                 messageDiv.style.opacity = '0';
                 setTimeout(() => messageDiv.remove(), 300);
             }, 3000);
         }
+
+        // --- FILE PROCESSING LOGIC ---
+        function handleFileUpload() {
+            const file = fileInput.files[0];
+            if (!file) {
+                displayMessage('Please select a file first.', 'error', fileResultsContainer);
+                return;
+            }
+
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                const text = event.target.result;
+                processTextFileData(text);
+            };
+            reader.readAsText(file);
+        }
+
+        function processTextFileData(text) {
+            // Remove BOM character that can interfere with parsing
+            if (text.charCodeAt(0) === 0xFEFF) {
+                text = text.substring(1);
+            }
+
+            const lines = text.split(/\r?\n/).filter(line => line.trim() !== '');
+            if (lines.length < 2) {
+                displayMessage('File is empty or invalid.', 'error', fileResultsContainer);
+                return;
+            }
+            
+            // Your file is Tab-Separated. We will split by tabs.
+            const delimiter = '\t';
+            const rows = lines.map(line => line.split(delimiter));
+
+            const columnIndices = {
+                reimbursementId: 1,
+                reason: 4,
+                currency: 10,
+                amountPerUnit: 11,
+                amountTotal: 12,
+            };
+
+            const reasonIndex = columnIndices.reason;
+            
+            const filteredData = rows
+                .slice(1) // Skip header row
+                .filter(row => {
+                    if (!row || row.length <= reasonIndex) return false;
+                    const reason = (row[reasonIndex] || '').trim().replace(/^"|"$/g, '');
+                    return reason.toLowerCase() === 'feecorrection';
+                })
+                .map(row => {
+                    const reimbursementId = (row[columnIndices.reimbursementId] || '').trim();
+                    const currency = (row[columnIndices.currency] || '').trim();
+                    const amountPerUnit = (row[columnIndices.amountPerUnit] || '').trim();
+                    const amountTotal = (row[columnIndices.amountTotal] || '').trim();
+                    
+                    return [reimbursementId, currency, amountPerUnit, amountTotal];
+                });
+
+            const headers = ['Case ID', 'Currency', 'Amount Per Unit', 'Amount Total'];
+            displayFileData(headers, filteredData);
+        }
+
+        function displayFileData(headers, data) {
+            fileResultsContainer.innerHTML = ''; // Clear previous results
+
+            if (data.length === 0) {
+                displayMessage('No rows found with reason "FeeCorrection".', 'info', fileResultsContainer);
+                return;
+            }
+
+            const table = document.createElement('table');
+            table.className = 'w-full text-xs text-left text-gray-500 bg-white rounded-lg shadow-md';
+            
+            const thead = document.createElement('thead');
+            thead.className = 'text-xs text-gray-700 uppercase bg-gray-50';
+            const headerRow = document.createElement('tr');
+            headers.forEach(headerText => {
+                const th = document.createElement('th');
+                th.scope = 'col';
+                th.className = 'px-3 py-2 whitespace-nowrap';
+                th.textContent = headerText;
+                headerRow.appendChild(th);
+            });
+            thead.appendChild(headerRow);
+            table.appendChild(thead);
+
+            const tbody = document.createElement('tbody');
+            data.forEach(rowData => {
+                const tr = document.createElement('tr');
+                tr.className = 'bg-white border-b hover:bg-gray-50';
+                rowData.forEach(cellData => {
+                    const td = document.createElement('td');
+                    td.className = 'px-3 py-2';
+                    td.textContent = cellData;
+                    tr.appendChild(td);
+                });
+                tbody.appendChild(tr);
+            });
+            table.appendChild(tbody);
+            
+            // Clear the placeholder from the right panel if it exists and show the table
+            document.getElementById('right-panel').innerHTML = '';
+            document.getElementById('right-panel').appendChild(table);
+        }
+
 
         // --- Event Listeners ---
         processBtn.addEventListener('click', generateLinks);
@@ -284,6 +344,8 @@
                 generateLinks();
             }
         });
+        processFileBtn.addEventListener('click', handleFileUpload);
+
 
     </script>
 
