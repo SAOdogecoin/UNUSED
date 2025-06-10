@@ -185,7 +185,6 @@
         async function saveState() {
             if (!userId || !db) return;
             const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-            // FIX: Corrected Firestore path to have an even number of segments
             const stateRef = doc(db, "artifacts", appId, "users", userId, "fbaToolData", "state");
             try {
                 await setDoc(stateRef, {
@@ -200,7 +199,6 @@
         async function loadState() {
             if (!userId || !db) return;
              const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-            // FIX: Corrected Firestore path to have an even number of segments
             const stateRef = doc(db, "artifacts", appId, "users", userId, "fbaToolData", "state");
             try {
                 const docSnap = await getDoc(stateRef);
@@ -223,7 +221,7 @@
         // --- UI VISIBILITY LOGIC ---
         function updatePlaceholderVisibility() {
             const shipmentsVisible = allShipments.length > 0;
-            const fileResultsExist = fileResultsContainer.hasChildNodes() && !fileSection.classList.contains('hidden');
+            const fileResultsExist = fileResultsContainer.hasChildNodes();
             
             if (shipmentsVisible || fileResultsExist) {
                 placeholderDiv.classList.add('hidden');
@@ -283,6 +281,7 @@
 
         function crossReferenceResults() {
              allShipments.forEach(shipment => {
+                if (shipment.cost > 120) return; // Skip if cost is over 120
                 const foundMatch = feeCorrectionData.find(fee => 
                     Math.abs(parseFloat(fee.amountPerUnit)) === Math.abs(shipment.cost) || 
                     Math.abs(parseFloat(fee.amountTotal)) === Math.abs(shipment.cost)
@@ -343,7 +342,10 @@
                 listItem.id = `shipment-${shipment.id}`;
                 
                 let matchInfo = '';
-                let actionButtons = `<a href="${shipment.url}" target="_blank" rel="noopener noreferrer" class="bg-gray-200 hover:bg-gray-300 text-gray-700 font-semibold py-1 px-3 rounded-lg transition duration-200 text-sm">View Shipment</a>`;
+                let actionButtonsHTML = `<a href="${shipment.url}" target="_blank" rel="noopener noreferrer" class="bg-gray-200 hover:bg-gray-300 text-gray-700 font-semibold py-1 px-3 rounded-lg transition duration-200 text-sm">View Shipment</a>`;
+                 if (shipment.cost > 120) {
+                     actionButtonsHTML += `<a href="https://sellercentral.amazon.com/payments/event/view?resultsPerPage=10&pageNumber=1" target="_blank" rel="noopener noreferrer" class="bg-orange-200 hover:bg-orange-300 text-orange-800 font-semibold py-1 px-3 rounded-lg transition duration-200 text-sm">View Payments</a>`;
+                }
 
                 if (shipment.match && shipment.match.caseId) {
                     listItem.className = 'bg-green-100 p-3 rounded-lg shadow-md animate-fade-in';
@@ -351,7 +353,7 @@
                     matchInfo = `
                     <div class="mt-2 pt-2 border-t border-green-300">
                         <p class="text-xs text-green-700 font-bold">MATCH FOUND</p>
-                        <p class="text-xs text-gray-600">Case ID: ${shipment.match.caseId}</p>
+                        <p class="text-xs text-gray-600">Case ID: <a href="${caseUrl}" target="_blank" class="underline text-blue-600">${shipment.match.caseId}</a></p>
                         <p class="text-xs text-gray-600">Amounts: ${shipment.match.amountPerUnit} / ${shipment.match.amountTotal}</p>
                     </div>`;
                     actionButtons += `<a href="${caseUrl}" target="_blank" rel="noopener noreferrer" class="bg-purple-200 hover:bg-purple-300 text-purple-800 font-semibold py-1 px-3 rounded-lg transition duration-200 text-sm">View Case</a>`;
