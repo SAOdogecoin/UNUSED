@@ -49,12 +49,12 @@
 <body class="bg-gray-100 text-gray-800">
 
     <header class="bg-white shadow-md sticky top-0 z-20">
-        <div class="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex justify-start items-center">
+        <div class="w-full max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 flex justify-start items-center">
              <h1 class="text-xl font-bold py-3">FBA Tool</h1>
         </div>
     </header>
 
-    <div class="w-full max-w-7xl mx-auto p-4 sm:p-6 lg:p-8">
+    <div class="w-full max-w-6xl mx-auto p-4 sm:p-6 lg:p-8">
         <main class="lg:flex lg:gap-8">
             <!-- Left Panel -->
             <div id="left-panel" class="lg:w-1/3 lg:flex-shrink-0 space-y-8">
@@ -342,6 +342,7 @@
                 listItem.id = `shipment-${shipment.id}`;
                 
                 let matchInfo = '';
+                // FIX: Initialize with let to allow modification
                 let actionButtonsHTML = `<a href="${shipment.url}" target="_blank" rel="noopener noreferrer" class="bg-gray-200 hover:bg-gray-300 text-gray-700 font-semibold py-1 px-3 rounded-lg transition duration-200 text-sm">View Shipment</a>`;
                  if (shipment.cost > 120) {
                      actionButtonsHTML += `<a href="https://sellercentral.amazon.com/payments/event/view?resultsPerPage=10&pageNumber=1" target="_blank" rel="noopener noreferrer" class="bg-orange-200 hover:bg-orange-300 text-orange-800 font-semibold py-1 px-3 rounded-lg transition duration-200 text-sm">View Payments</a>`;
@@ -353,10 +354,11 @@
                     matchInfo = `
                     <div class="mt-2 pt-2 border-t border-green-300">
                         <p class="text-xs text-green-700 font-bold">MATCH FOUND</p>
-                        <p class="text-xs text-gray-600">Case ID: <a href="${caseUrl}" target="_blank" class="underline text-blue-600">${shipment.match.caseId}</a></p>
+                        <p class="text-xs text-gray-600">Case ID: <a href="${caseUrl}" target="_blank" class="underline text-blue-600 hover:text-blue-800">${shipment.match.caseId}</a></p>
                         <p class="text-xs text-gray-600">Amounts: ${shipment.match.amountPerUnit} / ${shipment.match.amountTotal}</p>
                     </div>`;
-                    actionButtons += `<a href="${caseUrl}" target="_blank" rel="noopener noreferrer" class="bg-purple-200 hover:bg-purple-300 text-purple-800 font-semibold py-1 px-3 rounded-lg transition duration-200 text-sm">View Case</a>`;
+                    // FIX: Correctly append to actionButtonsHTML
+                    actionButtonsHTML += `<a href="${caseUrl}" target="_blank" rel="noopener noreferrer" class="bg-purple-200 hover:bg-purple-300 text-purple-800 font-semibold py-1 px-3 rounded-lg transition duration-200 text-sm">View Case</a>`;
 
                 } else {
                      listItem.className = 'bg-white p-3 rounded-lg shadow-md animate-fade-in';
@@ -375,7 +377,7 @@
                             <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
                         </button>
                         <div class="flex flex-col space-y-2">
-                           ${actionButtons}
+                           ${actionButtonsHTML}
                         </div>
                     </div>`;
                 resultsDiv.appendChild(listItem);
